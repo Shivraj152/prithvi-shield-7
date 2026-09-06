@@ -16,13 +16,15 @@ export const SubscribeModal: React.FC<SubscribeModalProps> = ({ isOpen, onClose 
   const [duration, setDuration] = useState<'1_day' | '7_days' | '30_days' | 'forever'>('7_days');
   const [lastDispatched, setLastDispatched] = useState<DispatchResult | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!email.trim()) {
-      alert("Please enter a valid email address.");
+      setFormError("Please enter a valid email address.");
       return;
     }
 
@@ -51,9 +53,10 @@ export const SubscribeModal: React.FC<SubscribeModalProps> = ({ isOpen, onClose 
   };
 
   const handleSendTestEmail = () => {
+    setFormError(null);
     const targetEmail = subscription?.email || email.trim() || user?.email;
     if (!targetEmail) {
-      alert("Please enter your email address first.");
+      setFormError("Please enter your email address first.");
       return;
     }
 
@@ -130,6 +133,11 @@ export const SubscribeModal: React.FC<SubscribeModalProps> = ({ isOpen, onClose 
         </div>
 
         <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
+          {formError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 font-bold">
+              ⚠️ {formError}
+            </div>
+          )}
 
           {/* Primary In-App Siren Banner */}
           <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl space-y-1.5 text-xs">

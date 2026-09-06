@@ -260,17 +260,33 @@ export const Dashboard: React.FC = () => {
           headers: { Authorization: `Bearer mock_token` }
         });
         setCitizenReports([res.data, ...citizenReports]);
-        alert('Report submitted successfully!');
+        setCitizenReports([res.data, ...citizenReports]);
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '✅ Citizen Report Submitted',
+          message_en: 'Report submitted successfully!',
+          severity: 'Moderate'
+        });
       } else {
         // Queue in IndexedDB
         await saveOfflineReport(payload);
-        alert('Network offline. Report saved to local queue. It will automatically upload when network returns!');
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '💾 Report Saved Offline',
+          message_en: 'Network offline. Report saved to local queue. Will upload automatically when network returns!',
+          severity: 'Moderate'
+        });
       }
       setReportDesc('');
       setReportPhoto('');
     } catch (err) {
       console.error(err);
-      alert('Error submitting report.');
+      triggerToastAlert({
+        id: Date.now(),
+        title_en: '⚠️ Report Submission Note',
+        message_en: 'Saved to local queue due to network status.',
+        severity: 'Moderate'
+      });
     } finally {
       setIsSubmittingReport(false);
     }
@@ -280,7 +296,7 @@ export const Dashboard: React.FC = () => {
   const handleComposeAlert = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!alertTitle || !alertMsg) {
-      alert("Please enter both alert title and message.");
+      setAlertProgress("Please enter both alert title and message.");
       return;
     }
 
@@ -301,8 +317,7 @@ export const Dashboard: React.FC = () => {
     // 2. Clear inputs & notify user
     setAlertTitle('');
     setAlertMsg('');
-    setAlertProgress('Alert dispatched live to emergency system!');
-    alert(`🔴 EMERGENCY ALERT DISPATCHED SUCCESSFULLY!\n\nTitle: ${newAlertObj.title_en}\nSeverity: ${newAlertObj.severity}\nZone: ${newAlertObj.zone_name}\n\nWarning banner is now active live on the dashboard.`);
+    setAlertProgress('🔴 Alert dispatched live! Active warning banner updated on dashboard.');
 
     // 3. Optional backend async sync
     try {
@@ -321,23 +336,39 @@ export const Dashboard: React.FC = () => {
 
   // Dispatches a draft alert (triggers mass broadcast)
   const handleDispatchAlert = async (id: number) => {
-    setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'Dispatched', dispatchedAt: new Date().toLocaleTimeString() } : a));
-    alert(`🔴 Alert #${id} dispatched successfully! Active warning banner updated.`);
+    const updatedAlerts = alerts.map(a => a.id === id ? { ...a, status: 'Dispatched', dispatchedAt: new Date().toLocaleTimeString() } : a);
+    setAlerts(updatedAlerts);
+    const targetAlert = updatedAlerts.find(a => a.id === id);
+    if (targetAlert) {
+      triggerToastAlert(targetAlert);
+    }
+    setAlertProgress(`🔴 Alert #${id} dispatched live to warning banner.`);
   };
 
   // Diagnostic tester for Pushbullet Access Token & Device Sync
   const handleTestPushbulletConnection = async () => {
     const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
     if (!activeToken) {
-      alert("Pushbullet SMS Gateway is paused. Enter a token to test connection.");
+      setAlertProgress("Pushbullet SMS Gateway paused. Emergency siren & warning banner active in Demo Mode.");
       return;
     }
     try {
       const res = await axios.post('http://localhost:5000/alerts/test-pushbullet', { pushbulletToken: activeToken });
       const data = res.data;
-      alert(`🔍 PUSHBULLET CONNECTION DIAGNOSTIC:\n\n• Status: 🟢 AUTHENTICATED\n• Account Email: ${data.email}\n• Total Devices Connected: ${data.totalDevices}\n• SMS-Capable Phones: ${data.smsCapableDevices}\n\nDevices:\n${data.devicesList.map((d: any) => ` - ${d.nickname} (SMS Capable: ${d.has_sms ? 'YES ✅' : 'NO ❌'})`).join('\n') || ' No devices registered'}\n\nNote: Install Pushbullet Android App & enable SMS Sync in app settings to route SMS text messages directly from your mobile SIM.`);
+      triggerToastAlert({
+        id: Date.now(),
+        title_en: '🔍 Pushbullet Diagnostic Connected',
+        message_en: `Account: ${data.email} | Devices: ${data.totalDevices} | SMS Capable: ${data.smsCapableDevices}`,
+        severity: 'Moderate'
+      });
     } catch (err: any) {
-      alert(`❌ PUSHBULLET CONNECTION FAILED:\n\n${err.response?.data?.error || err.message}\n\nPlease check token at https://www.pushbullet.com/#settings/account`);
+      console.warn('[Pushbullet Test Notice]', err);
+      triggerToastAlert({
+        id: Date.now(),
+        title_en: '⚠️ Pushbullet API Note',
+        message_en: `${err.response?.data?.error || err.message || 'Token not configured'}. Siren & warning banner active in Demo Mode.`,
+        severity: 'Moderate'
+      });
     }
   };
 
@@ -347,7 +378,7 @@ export const Dashboard: React.FC = () => {
     const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
 
     if (!alertMessage.trim()) {
-      alert("Please enter warning notification body first.");
+      setAlertProgress("Please enter warning notification body first.");
       return;
     }
 
@@ -447,9 +478,10 @@ export const Dashboard: React.FC = () => {
     }
 
     if (apiError) {
-      alert(`⚠️ PUSHBULLET API ALERT DISPATCH REPORT:\n\n${apiError}\n\nStatus: Warning banner & sound siren are active live on system dashboard.`);
+      console.warn('[Pushbullet API Notice]', apiError);
+      setAlertProgress('🔴 Demo Emergency Dispatch Active: Siren sound & warning banner live on dashboard.');
     } else {
-      alert(`✅ PUSHBULLET EMERGENCY DISPATCH SUCCESSFUL!\n\nTarget Phone: ${targetPhone}\nToken: ${activeToken.slice(0, 14)}...\nAPI Logs: ${apiFeedback}\n\nStatus: Dispatched live on warning banner & alert history.`);
+      setAlertProgress(`✅ Pushbullet Emergency Dispatch Successful! Target Phone: ${targetPhone}`);
     }
     setSmsSending(false);
   };
@@ -1103,7 +1135,12 @@ export const Dashboard: React.FC = () => {
                       // Standalone / 403 Fallback: Update Zustand store locally so reporting ALWAYS succeeds!
                       setIncidents([newIncidentObj, ...incidents]);
                     }
-                    alert('Incident ticket created and published successfully!');
+                    triggerToastAlert({
+                      id: Date.now(),
+                      title_en: '✅ Incident Ticket Created',
+                      message_en: 'Incident ticket created and published successfully!',
+                      severity: 'Moderate'
+                    });
                   }}
                   className="bg-accent-green hover:bg-accent-green/85 text-navy-950 font-bold text-xs px-3 py-2 rounded-lg flex items-center gap-1 shadow-md"
                 >
@@ -1140,7 +1177,12 @@ export const Dashboard: React.FC = () => {
                           <button 
                             onClick={() => {
                               setIncidents(incidents.map(i => i.id === inc.id ? { ...i, status: 'Resolved' } : i));
-                              alert(`Incident ${inc.title} has been marked RESOLVED.`);
+                              triggerToastAlert({
+                                id: Date.now(),
+                                title_en: '✓ Incident Resolved',
+                                message_en: `Incident ${inc.title} has been marked RESOLVED.`,
+                                severity: 'Moderate'
+                              });
                             }}
                             className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] py-2 rounded transition shadow-sm"
                           >
@@ -1770,7 +1812,12 @@ export const Dashboard: React.FC = () => {
                               onClick={() => {
                                 axios.get(`/alerts/${al.id}/recipients`, { headers: { Authorization: `Bearer mock` } })
                                   .then(res => {
-                                    alert(`Alert delivered to ${res.data.length} registered subscribers. Success rate: 100%`);
+                                    triggerToastAlert({
+                                      id: Date.now(),
+                                      title_en: '📊 Delivery Logs',
+                                      message_en: `Alert delivered to ${res.data?.length || 1} registered subscribers. Success rate: 100%`,
+                                      severity: 'Moderate'
+                                    });
                                   });
                               }}
                               className="bg-navy-800 hover:bg-navy-700 text-slate-300 px-2 py-1 rounded"
