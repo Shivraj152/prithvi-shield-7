@@ -353,7 +353,7 @@ export const Dashboard: React.FC = () => {
       return;
     }
     try {
-      const res = await axios.post('http://localhost:5000/alerts/test-pushbullet', { pushbulletToken: activeToken });
+      const res = await axios.post('/alerts/test-pushbullet', { pushbulletToken: activeToken });
       const data = res.data;
       triggerToastAlert({
         id: Date.now(),
@@ -405,7 +405,7 @@ export const Dashboard: React.FC = () => {
 
     // 2. Try Backend Express Proxy Endpoint (/alerts/send-sms)
     try {
-      const res = await axios.post('http://localhost:5000/alerts/send-sms', {
+      const res = await axios.post('/alerts/send-sms', {
         phone: targetPhone,
         message: alertMessage,
         gateway: smsGateway,
@@ -1118,7 +1118,7 @@ export const Dashboard: React.FC = () => {
                     };
 
                     try {
-                      const res = await axios.post('http://localhost:5000/incidents', {
+                      const res = await axios.post('/incidents', {
                         title: titleStr,
                         description: descStr,
                         type: 'landslide',

@@ -144,7 +144,7 @@ export const LocationSearchBox: React.FC = () => {
     // 2. Fetch AI Risk Interpretation Summary from Backend Proxy
     let riskInfo = null;
     try {
-      const aiRes = await axios.post('http://localhost:5000/alerts/ai-location-risk', {
+      const aiRes = await axios.post('/alerts/ai-location-risk', {
         locationName: loc.name,
         stateName: loc.state,
         lat: loc.lat,
