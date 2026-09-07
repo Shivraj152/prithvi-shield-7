@@ -1,8 +1,12 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/.*).*)",
-      "destination": "/index.html"
+      "source": "/api/:path*",
+      "destination": "https://backend-git-main-shivraj152s-projects.vercel.app/api/:path*"
+    },
+    {
+      "source": "/ml/:path*",
+      "destination": "https://prithvi-ml.onrender.com/:path*"
     }
   ]
 }
