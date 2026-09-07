@@ -130,8 +130,14 @@ export const Dashboard: React.FC = () => {
   const [testMobileNumber, setTestMobileNumber] = useState<string>('');
   const [smsAlertMessage, setSmsAlertMessage] = useState<string>('CRITICAL EVACUATION WARNING: Mass movements and saturated slope soils detected in East Khasi Hills. Seek high ground immediately.');
   const [smsSending, setSmsSending] = useState<boolean>(false);
-  const [smsGateway, setSmsGateway] = useState<string>('pushbullet');
-  const [pushbulletToken, setPushbulletToken] = useState<string>(import.meta.env.VITE_PUSHBULLET_TOKEN || '');
+  const [pushbulletToken, setPushbulletToken] = useState<string>(() => {
+    return localStorage.getItem('prithvi_pushbullet_token') || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
+  });
+
+  const handlePushbulletTokenChange = (val: string) => {
+    setPushbulletToken(val);
+    localStorage.setItem('prithvi_pushbullet_token', val);
+  };
 
 
 
@@ -1721,7 +1727,7 @@ export const Dashboard: React.FC = () => {
                         type="password" 
                         placeholder="Paste your Pushbullet Access Token here..."
                         value={pushbulletToken}
-                        onChange={e => setPushbulletToken(e.target.value)}
+                        onChange={e => handlePushbulletTokenChange(e.target.value)}
                         className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green"
                       />
                     </div>
