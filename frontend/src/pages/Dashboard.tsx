@@ -455,14 +455,19 @@ export const Dashboard: React.FC = () => {
         } else {
           triggerToastAlert({
             id: Date.now(),
-            title_en: '❌ Twilio SMS Error',
+            title_en: '❌ Twilio SMS Dispatch Failed',
             message_en: twData.message || 'Twilio cellular SMS dispatch failed. Check Account SID & Auth Token.',
-            severity: 'Moderate'
+            severity: 'High'
           });
         }
       } catch (twErr: any) {
         console.warn('[Twilio Error]', twErr);
-        triggerToastAlert(newAlert);
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '❌ Twilio Dispatch Error',
+          message_en: twErr.message || 'Twilio network request failed.',
+          severity: 'High'
+        });
       }
     } else {
       // 2. Direct Pushbullet API Push Note (Runs directly in user browser)
@@ -492,11 +497,21 @@ export const Dashboard: React.FC = () => {
           });
         } else {
           apiError = pushData.error?.message || 'Pushbullet API Error';
-          triggerToastAlert(newAlert);
+          triggerToastAlert({
+            id: Date.now(),
+            title_en: '❌ PUSHBULLET DISPATCH FAILED',
+            message_en: `${apiError}. Siren audio & warning banner active on system dashboard.`,
+            severity: 'High'
+          });
         }
       } catch (err: any) {
         apiError = err.message;
-        triggerToastAlert(newAlert);
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '❌ DISPATCH NETWORK ERROR',
+          message_en: `${err.message}. Siren audio & warning banner active on system dashboard.`,
+          severity: 'High'
+        });
         console.warn('[Direct Pushbullet Notice]', err);
       }
     }
@@ -512,6 +527,8 @@ export const Dashboard: React.FC = () => {
     } else if ('Notification' in window && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
+
+    setSmsSending(false);
 
     if (apiError) {
       console.warn('[Pushbullet API Notice]', apiError);
