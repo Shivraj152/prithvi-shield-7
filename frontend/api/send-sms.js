@@ -1,6 +1,6 @@
 const https = require('https');
 
-module.exports = async (req, res) => {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Access-Token');
@@ -29,39 +29,43 @@ module.exports = async (req, res) => {
     body: `[SMS Warning to ${targetPhone}]: ${alertMsg}`
   });
 
-  const options = {
-    hostname: 'api.pushbullet.com',
-    port: 443,
-    path: '/v2/pushes',
-    method: 'POST',
-    headers: {
-      'Access-Token': activeToken,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(postData)
-    }
-  };
-
-  const pReq = https.request(options, (pRes) => {
-    let responseData = '';
-    pRes.on('data', (chunk) => { responseData += chunk; });
-    pRes.on('end', () => {
-      try {
-        const parsed = JSON.parse(responseData);
-        if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
-          return res.status(200).json({ success: true, message: 'Pushbullet Emergency Alert Dispatched Successfully!', data: parsed });
-        } else {
-          return res.status(pRes.statusCode || 400).json({ success: false, error: parsed.error?.message || 'Pushbullet API Error' });
-        }
-      } catch (e) {
-        return res.status(500).json({ success: false, error: 'Failed to parse Pushbullet response' });
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.pushbullet.com',
+      port: 443,
+      path: '/v2/pushes',
+      method: 'POST',
+      headers: {
+        'Access-Token': activeToken,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData)
       }
+    };
+
+    const pReq = https.request(options, (pRes) => {
+      let responseData = '';
+      pRes.on('data', (chunk) => { responseData += chunk; });
+      pRes.on('end', () => {
+        try {
+          const parsed = JSON.parse(responseData);
+          if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
+            res.status(200).json({ success: true, message: 'Pushbullet Emergency Alert Dispatched Successfully!', data: parsed });
+          } else {
+            res.status(pRes.statusCode || 400).json({ success: false, error: parsed.error?.message || 'Pushbullet API Error' });
+          }
+        } catch (e) {
+          res.status(500).json({ success: false, error: 'Failed to parse Pushbullet response' });
+        }
+        resolve();
+      });
     });
-  });
 
-  pReq.on('error', (e) => {
-    return res.status(500).json({ success: false, error: e.message });
-  });
+    pReq.on('error', (e) => {
+      res.status(500).json({ success: false, error: e.message });
+      resolve();
+    });
 
-  pReq.write(postData);
-  pReq.end();
+    pReq.write(postData);
+    pReq.end();
+  });
 };
