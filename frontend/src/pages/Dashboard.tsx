@@ -405,90 +405,34 @@ export const Dashboard: React.FC = () => {
     triggerToastAlert(newAlert);
 
     let delivered = false;
-
     let apiFeedback = '';
     let apiError = '';
 
-    // 2. Try Vercel Serverless Gateway (/api/send-sms)
+    // 2. Direct Pushbullet API Push Note (Runs directly in user browser)
     try {
-      const res = await axios.post('/api/send-sms', {
-        phone: targetPhone,
-        message: alertMessage,
-        gateway: smsGateway,
-        pushbulletToken: activeToken,
-        email: subscription?.email || user?.email
+      const pushRes = await fetch('https://api.pushbullet.com/v2/pushes', {
+        method: 'POST',
+        headers: {
+          'Access-Token': activeToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: 'note',
+          title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
+          body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
+        })
       });
-      if (res.data && res.data.success) {
+
+      const pushData = await pushRes.json();
+      if (pushRes.ok) {
         delivered = true;
-        apiFeedback = res.data.message || 'Pushbullet Vercel Serverless Gateway Dispatched Alert!';
+        apiFeedback = 'Pushbullet Emergency Push Note Delivered Successfully!';
+      } else {
+        apiError = pushData.error?.message || 'Pushbullet API Error';
       }
     } catch (err: any) {
-      apiError = err.response?.data?.error || err.message;
-      console.warn('[Vercel Serverless Gateway Notice]', apiError);
-    }
-
-    // 3. Try Backend Express Proxy Endpoint (/alerts/send-sms)
-    if (!delivered) {
-      try {
-        const res = await axios.post('/alerts/send-sms', {
-          phone: targetPhone,
-          message: alertMessage,
-          gateway: smsGateway,
-          pushbulletToken: activeToken,
-          email: subscription?.email || user?.email
-        });
-        if (res.data && res.data.success) {
-          delivered = true;
-          apiFeedback = res.data.message || 'Pushbullet Gateway Dispatched Alert!';
-        }
-      } catch (err: any) {
-        apiError = err.response?.data?.error || err.message;
-        console.warn('[Backend Express Proxy Notice]', apiError);
-      }
-    }
-
-    // 3. Fallback: Direct CORS Proxy Push to Pushbullet API
-    if (!delivered) {
-      try {
-        const corsRes = await fetch('https://corsproxy.io/?https://api.pushbullet.com/v2/pushes', {
-          method: 'POST',
-          headers: {
-            'Access-Token': activeToken,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'note',
-            title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
-            body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
-          })
-        });
-        if (corsRes.ok) {
-          delivered = true;
-          apiFeedback = 'Direct Pushbullet CORS Gateway Delivered Push!';
-        }
-      } catch (corsErr: any) {
-        console.warn('[CORS Proxy Notice]', corsErr?.message);
-      }
-    }
-
-    // 4. Final Fallback: Direct Pushbullet API
-    if (!delivered) {
-      try {
-        await fetch('https://api.pushbullet.com/v2/pushes', {
-          method: 'POST',
-          headers: {
-            'Access-Token': activeToken,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            type: 'note',
-            title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
-            body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
-          })
-        }).catch(err => console.warn('[Direct Pushbullet Notice]', err));
-      } catch (e) {
-        console.warn(e);
-      }
+      apiError = err.message;
+      console.warn('[Direct Pushbullet Notice]', err);
     }
 
     // Sound Emergency Audio Siren
