@@ -353,35 +353,36 @@ export const Dashboard: React.FC = () => {
 
   // Diagnostic tester for Pushbullet Access Token & Device Sync
   const handleTestPushbulletConnection = async () => {
-    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
-    if (!activeToken) {
-      setAlertProgress("Pushbullet SMS Gateway paused. Emergency siren & warning banner active in Demo Mode.");
-      return;
-    }
+    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
     try {
-      const res = await axios.post('/alerts/test-pushbullet', { pushbulletToken: activeToken });
-      const data = res.data;
-      triggerToastAlert({
-        id: Date.now(),
-        title_en: '🔍 Pushbullet Diagnostic Connected',
-        message_en: `Account: ${data.email} | Devices: ${data.totalDevices} | SMS Capable: ${data.smsCapableDevices}`,
-        severity: 'Moderate'
+      const res = await fetch('https://api.pushbullet.com/v2/users/me', {
+        headers: { 'Access-Token': activeToken }
       });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '🔍 Pushbullet Diagnostic Connected',
+          message_en: `Account: ${data.name || data.email} (${data.email}) - Ready for Emergency Dispatches!`,
+          severity: 'Moderate'
+        });
+      } else {
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '⚠️ Pushbullet API Note',
+          message_en: `${data.error?.message || 'Token not authenticated'}. Siren & warning banner active in Demo Mode.`,
+          severity: 'Moderate'
+        });
+      }
     } catch (err: any) {
       console.warn('[Pushbullet Test Notice]', err);
-      triggerToastAlert({
-        id: Date.now(),
-        title_en: '⚠️ Pushbullet API Note',
-        message_en: `${err.response?.data?.error || err.message || 'Token not configured'}. Siren & warning banner active in Demo Mode.`,
-        severity: 'Moderate'
-      });
     }
   };
 
   // Sends a real SMS/Push notification warning alert via Backend & CORS Gateway Proxy
   const handleSendTestSMS = async (alertMessage: string) => {
     const targetPhone = testMobileNumber || import.meta.env.VITE_TEST_PHONE || '+919876543210';
-    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
+    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
 
     if (!alertMessage.trim()) {
       setAlertProgress("Please enter warning notification body first.");
@@ -402,7 +403,6 @@ export const Dashboard: React.FC = () => {
 
     // 1. Instantly update Zustand store so dashboard emergency red banner & alert table update LIVE
     addAlert(newAlert);
-    triggerToastAlert(newAlert);
 
     let delivered = false;
     let apiFeedback = '';
@@ -427,11 +427,19 @@ export const Dashboard: React.FC = () => {
       if (pushRes.ok) {
         delivered = true;
         apiFeedback = 'Pushbullet Emergency Push Note Delivered Successfully!';
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '✅ PUSHBULLET ALERT DELIVERED LIVE',
+          message_en: `Emergency Notification pushed to Leander Linny Timothy (${pushData.receiver_email || 'Connected Device'})`,
+          severity: 'Critical'
+        });
       } else {
         apiError = pushData.error?.message || 'Pushbullet API Error';
+        triggerToastAlert(newAlert);
       }
     } catch (err: any) {
       apiError = err.message;
+      triggerToastAlert(newAlert);
       console.warn('[Direct Pushbullet Notice]', err);
     }
 
