@@ -409,9 +409,9 @@ export const Dashboard: React.FC = () => {
     let apiFeedback = '';
     let apiError = '';
 
-    // 2. Try Backend Express Proxy Endpoint (/alerts/send-sms)
+    // 2. Try Vercel Serverless Gateway (/api/send-sms)
     try {
-      const res = await axios.post('/alerts/send-sms', {
+      const res = await axios.post('/api/send-sms', {
         phone: targetPhone,
         message: alertMessage,
         gateway: smsGateway,
@@ -420,11 +420,31 @@ export const Dashboard: React.FC = () => {
       });
       if (res.data && res.data.success) {
         delivered = true;
-        apiFeedback = res.data.message || 'Pushbullet Gateway Dispatched Alert!';
+        apiFeedback = res.data.message || 'Pushbullet Vercel Serverless Gateway Dispatched Alert!';
       }
     } catch (err: any) {
       apiError = err.response?.data?.error || err.message;
-      console.warn('[Backend Express Proxy Notice]', apiError);
+      console.warn('[Vercel Serverless Gateway Notice]', apiError);
+    }
+
+    // 3. Try Backend Express Proxy Endpoint (/alerts/send-sms)
+    if (!delivered) {
+      try {
+        const res = await axios.post('/alerts/send-sms', {
+          phone: targetPhone,
+          message: alertMessage,
+          gateway: smsGateway,
+          pushbulletToken: activeToken,
+          email: subscription?.email || user?.email
+        });
+        if (res.data && res.data.success) {
+          delivered = true;
+          apiFeedback = res.data.message || 'Pushbullet Gateway Dispatched Alert!';
+        }
+      } catch (err: any) {
+        apiError = err.response?.data?.error || err.message;
+        console.warn('[Backend Express Proxy Notice]', apiError);
+      }
     }
 
     // 3. Fallback: Direct CORS Proxy Push to Pushbullet API
