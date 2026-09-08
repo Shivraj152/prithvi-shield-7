@@ -317,10 +317,10 @@ export const SubscribeModal: React.FC<SubscribeModalProps> = ({ isOpen, onClose 
               </div>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start space-x-2 text-amber-300/90">
-              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start space-x-2 text-blue-300/90">
+              <ShieldAlert className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <div>
-                <strong>SMS & Mobile Gateways Status:</strong> Cellular SMS sending is currently <em>paused pending security review</em> and is planned for future production release. The in-browser alert + siren sound system is fully active and live.
+                <strong>SMS & Mobile Push Gateways Active:</strong> Supports Pushbullet Push/SMS and Twilio Direct Cellular SMS dispatches via serverless API endpoints (`/api/send-sms`). Configure credentials in environment variables or UI options for live mobile delivery.
               </div>
             </div>
           </div>
