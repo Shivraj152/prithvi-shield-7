@@ -19,9 +19,70 @@ module.exports = async function handler(req, res) {
   }
   body = body || {};
 
-  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
-  const targetPhone = body.phone || '+919876543210';
+  const gateway = body.gateway || (process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'pushbullet');
+  const targetPhone = body.phone || body.targetPhone || '+919876543210';
   const alertMsg = body.message || 'CRITICAL EVACUATION WARNING: Mass movements detected in East Khasi Hills. Seek high ground immediately.';
+
+  // 1. TWILIO DIRECT CELLULAR SMS GATEWAY
+  if (gateway === 'twilio' || (body.twilioSid || process.env.TWILIO_ACCOUNT_SID)) {
+    const twSid = body.twilioSid || process.env.TWILIO_ACCOUNT_SID;
+    const twToken = body.twilioToken || process.env.TWILIO_AUTH_TOKEN;
+    const twPhone = body.twilioPhone || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!twSid || !twToken || !twPhone) {
+      return res.status(400).json({ success: false, error: 'Twilio SID, Auth Token, and Sender Phone are required in Vercel environment variables or request body.' });
+    }
+
+    const postData = new URLSearchParams({
+      To: targetPhone,
+      From: twPhone,
+      Body: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`
+    }).toString();
+
+    return new Promise((resolve) => {
+      const authHeader = 'Basic ' + Buffer.from(`${twSid}:${twToken}`).toString('base64');
+      const options = {
+        hostname: 'api.twilio.com',
+        port: 443,
+        path: `/2010-04-01/Accounts/${twSid}/Messages.json`,
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      const req = https.request(options, (tRes) => {
+        let responseData = '';
+        tRes.on('data', (chunk) => { responseData += chunk; });
+        tRes.on('end', () => {
+          try {
+            const parsed = JSON.parse(responseData);
+            if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
+              res.status(200).json({ success: true, gateway: 'twilio', message: `Twilio Cellular SMS Sent to ${targetPhone}`, sid: parsed.sid, data: parsed });
+            } else {
+              res.status(tRes.statusCode || 400).json({ success: false, gateway: 'twilio', error: parsed.message || 'Twilio Dispatch Error' });
+            }
+          } catch (e) {
+            res.status(500).json({ success: false, error: 'Failed to parse Twilio response' });
+          }
+          resolve();
+        });
+      });
+
+      req.on('error', (e) => {
+        res.status(500).json({ success: false, error: e.message });
+        resolve();
+      });
+
+      req.write(postData);
+      req.end();
+    });
+  }
+
+  // 2. PUSHBULLET PUSH NOTE GATEWAY
+  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
 
   const postData = JSON.stringify({
     type: 'note',
@@ -49,9 +110,9 @@ module.exports = async function handler(req, res) {
         try {
           const parsed = JSON.parse(responseData);
           if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
-            res.status(200).json({ success: true, message: 'Pushbullet Emergency Alert Dispatched Successfully!', data: parsed });
+            res.status(200).json({ success: true, gateway: 'pushbullet', message: 'Pushbullet Emergency Alert Dispatched Successfully!', data: parsed });
           } else {
-            res.status(pRes.statusCode || 400).json({ success: false, error: parsed.error?.message || 'Pushbullet API Error' });
+            res.status(pRes.statusCode || 400).json({ success: false, gateway: 'pushbullet', error: parsed.error?.message || 'Pushbullet API Error' });
           }
         } catch (e) {
           res.status(500).json({ success: false, error: 'Failed to parse Pushbullet response' });

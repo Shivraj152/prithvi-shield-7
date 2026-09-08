@@ -470,33 +470,56 @@ export const Dashboard: React.FC = () => {
         });
       }
     } else {
-      // 2. Direct Pushbullet API Push Note (Runs directly in user browser)
+      // 2. Direct Pushbullet API Push Note / Vercel Serverless Gateway
       try {
-        const pushRes = await fetch('https://api.pushbullet.com/v2/pushes', {
+        // Try Vercel Serverless /api/send-sms endpoint first to use serverless environment variables
+        const apiRes = await fetch('/api/send-sms', {
           method: 'POST',
-          headers: {
-            'Access-Token': activeToken,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: 'note',
-            title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
-            body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
+            gateway: 'pushbullet',
+            pushbulletToken: activeToken,
+            phone: targetPhone,
+            message: alertMessage
           })
-        });
+        }).catch(() => null);
 
-        const pushData = await pushRes.json();
-        if (pushRes.ok) {
+        let pushData: any = null;
+        let isOk = false;
+
+        if (apiRes && apiRes.ok) {
+          pushData = await apiRes.json();
+          isOk = pushData.success !== false;
+        } else {
+          // Direct Pushbullet API Fallback
+          const pushRes = await fetch('https://api.pushbullet.com/v2/pushes', {
+            method: 'POST',
+            headers: {
+              'Access-Token': activeToken,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              type: 'note',
+              title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
+              body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
+            })
+          });
+          pushData = await pushRes.json();
+          isOk = pushRes.ok;
+        }
+
+        if (isOk) {
           delivered = true;
           apiFeedback = 'Pushbullet Emergency Push Note Delivered Successfully!';
+          const receiverAccount = pushData?.data?.receiver_email || pushData?.receiver_email || 'Connected Device';
           triggerToastAlert({
             id: Date.now(),
             title_en: '✅ PUSHBULLET ALERT DELIVERED LIVE',
-            message_en: `Emergency Notification pushed to Leander Linny Timothy (${pushData.receiver_email || 'Connected Device'})`,
+            message_en: `Emergency Notification pushed to Pushbullet account (${receiverAccount})`,
             severity: 'Critical'
           });
         } else {
-          apiError = pushData.error?.message || 'Pushbullet API Error';
+          apiError = pushData?.error?.message || pushData?.error || 'Pushbullet API Error';
           triggerToastAlert({
             id: Date.now(),
             title_en: '❌ PUSHBULLET DISPATCH FAILED',
