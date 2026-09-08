@@ -19,8 +19,8 @@ module.exports = async function handler(req, res) {
   }
   body = body || {};
 
-  const gateway = body.gateway || (process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'pushbullet');
-  const targetPhone = body.phone || body.targetPhone || '+919876543210';
+  const gateway = body.gateway || (process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'cellular_sms');
+  const targetPhone = body.phone || body.targetPhone || '+919933260684';
   const alertMsg = body.message || 'CRITICAL EVACUATION WARNING: Mass movements detected in East Khasi Hills. Seek high ground immediately.';
 
   // 1. TWILIO DIRECT CELLULAR SMS GATEWAY
@@ -29,25 +29,71 @@ module.exports = async function handler(req, res) {
     const twToken = body.twilioToken || process.env.TWILIO_AUTH_TOKEN;
     const twPhone = body.twilioPhone || process.env.TWILIO_PHONE_NUMBER;
 
-    if (!twSid || !twToken || !twPhone) {
-      return res.status(400).json({ success: false, error: 'Twilio SID, Auth Token, and Sender Phone are required in Vercel environment variables or request body.' });
-    }
+    if (twSid && twToken && twPhone) {
+      const postData = new URLSearchParams({
+        To: targetPhone,
+        From: twPhone,
+        Body: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`
+      }).toString();
 
+      return new Promise((resolve) => {
+        const authHeader = 'Basic ' + Buffer.from(`${twSid}:${twToken}`).toString('base64');
+        const options = {
+          hostname: 'api.twilio.com',
+          port: 443,
+          path: `/2010-04-01/Accounts/${twSid}/Messages.json`,
+          method: 'POST',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(postData)
+          }
+        };
+
+        const req = https.request(options, (tRes) => {
+          let responseData = '';
+          tRes.on('data', (chunk) => { responseData += chunk; });
+          tRes.on('end', () => {
+            try {
+              const parsed = JSON.parse(responseData);
+              if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
+                res.status(200).json({ success: true, gateway: 'twilio', message: `Twilio Cellular SMS Sent to ${targetPhone}`, sid: parsed.sid, data: parsed });
+              } else {
+                res.status(tRes.statusCode || 400).json({ success: false, gateway: 'twilio', error: parsed.message || 'Twilio Dispatch Error' });
+              }
+            } catch (e) {
+              res.status(500).json({ success: false, error: 'Failed to parse Twilio response' });
+            }
+            resolve();
+          });
+        });
+
+        req.on('error', (e) => {
+          res.status(500).json({ success: false, error: e.message });
+          resolve();
+        });
+
+        req.write(postData);
+        req.end();
+      });
+    }
+  }
+
+  // 2. DIRECT CELLULAR SMS GATEWAY (Textbelt Free Cellular Gateway fallback for arbitrary mobile numbers)
+  if (gateway === 'cellular_sms') {
     const postData = new URLSearchParams({
-      To: targetPhone,
-      From: twPhone,
-      Body: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`
+      phone: targetPhone,
+      message: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`,
+      key: body.textbeltKey || process.env.TEXTBELT_KEY || 'textbelt'
     }).toString();
 
     return new Promise((resolve) => {
-      const authHeader = 'Basic ' + Buffer.from(`${twSid}:${twToken}`).toString('base64');
       const options = {
-        hostname: 'api.twilio.com',
+        hostname: 'textbelt.com',
         port: 443,
-        path: `/2010-04-01/Accounts/${twSid}/Messages.json`,
+        path: '/text',
         method: 'POST',
         headers: {
-          'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(postData)
         }
@@ -59,13 +105,13 @@ module.exports = async function handler(req, res) {
         tRes.on('end', () => {
           try {
             const parsed = JSON.parse(responseData);
-            if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
-              res.status(200).json({ success: true, gateway: 'twilio', message: `Twilio Cellular SMS Sent to ${targetPhone}`, sid: parsed.sid, data: parsed });
+            if (parsed.success) {
+              res.status(200).json({ success: true, gateway: 'cellular_sms', message: `Cellular SMS Sent to ${targetPhone}! (TextID: ${parsed.textId})`, textId: parsed.textId, data: parsed });
             } else {
-              res.status(tRes.statusCode || 400).json({ success: false, gateway: 'twilio', error: parsed.message || 'Twilio Dispatch Error' });
+              res.status(400).json({ success: false, gateway: 'cellular_sms', error: parsed.error || 'Cellular SMS Gateway limit reached. Configure Twilio or Pushbullet.' });
             }
           } catch (e) {
-            res.status(500).json({ success: false, error: 'Failed to parse Twilio response' });
+            res.status(500).json({ success: false, error: 'Failed to parse SMS gateway response' });
           }
           resolve();
         });
@@ -81,7 +127,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // 2. PUSHBULLET PUSH NOTE GATEWAY
+  // 3. PUSHBULLET PUSH NOTE GATEWAY
   const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
 
   const postData = JSON.stringify({

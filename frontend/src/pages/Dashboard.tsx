@@ -416,7 +416,43 @@ export const Dashboard: React.FC = () => {
     let apiFeedback = '';
     let apiError = '';
 
-    if (smsGateway === 'twilio') {
+    if (smsGateway === 'cellular_sms') {
+      try {
+        const apiRes = await fetch('/api/send-sms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gateway: 'cellular_sms',
+            phone: targetPhone,
+            message: alertMessage
+          })
+        });
+
+        const smsData = await apiRes.json();
+        if (apiRes.ok && smsData.success) {
+          triggerToastAlert({
+            id: Date.now(),
+            title_en: '✅ DIRECT CELLULAR SMS DISPATCHED',
+            message_en: `Emergency SMS text message dispatched directly to ${targetPhone}!`,
+            severity: 'Critical'
+          });
+        } else {
+          triggerToastAlert({
+            id: Date.now(),
+            title_en: '⚠️ Cellular SMS Gateway Notice',
+            message_en: `${smsData.error || 'Cellular SMS gateway daily free limit reached'}. Use Twilio or Pushbullet gateway.`,
+            severity: 'High'
+          });
+        }
+      } catch (err: any) {
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '❌ Cellular SMS Dispatch Error',
+          message_en: err.message || 'Failed to dispatch cellular SMS.',
+          severity: 'High'
+        });
+      }
+    } else if (smsGateway === 'twilio') {
       if (!twilioSid.trim() || !twilioToken.trim() || !twilioPhone.trim()) {
         triggerToastAlert({
           id: Date.now(),
@@ -1783,12 +1819,19 @@ export const Dashboard: React.FC = () => {
                         onChange={e => setSmsGateway(e.target.value)}
                         className="bg-navy-900 border border-navy-700 text-accent-green font-bold px-3 py-1.5 rounded-lg outline-none cursor-pointer"
                       >
-                        <option value="pushbullet">📱 Pushbullet App & Android Phone Push</option>
-                        <option value="twilio">💬 Twilio Direct Cellular SMS (Any Mobile Number)</option>
+                        <option value="cellular_sms">📱 Direct Cellular SMS (Sends SMS text to mobile number)</option>
+                        <option value="pushbullet">🔔 Pushbullet App & Account Push (Push Notification)</option>
+                        <option value="twilio">⚡ Twilio Direct Cellular SMS Gateway</option>
                       </select>
                     </div>
 
-                    {smsGateway === 'twilio' ? (
+                    {smsGateway === 'cellular_sms' ? (
+                      <div className="space-y-2.5 pt-2 border-t border-navy-800">
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 p-2.5 rounded text-[10px] leading-relaxed">
+                          🟢 <strong>Direct Cellular SMS Mode:</strong> Dispatches real cellular SMS text messages directly to any recipient mobile number over telecom networks.
+                        </div>
+                      </div>
+                    ) : smsGateway === 'twilio' ? (
                       <div className="space-y-2.5 pt-2 border-t border-navy-800">
                         <p className="text-[11px] text-amber-400 font-semibold leading-relaxed">
                           ⚡ <strong>Twilio Cellular SMS Mode:</strong> Delivers direct cellular SMS text messages directly to any mobile phone globally. (Enter your Twilio credentials below).
@@ -1819,8 +1862,8 @@ export const Dashboard: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-2.5">
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-2.5 rounded text-[10px] leading-relaxed">
-                          🟢 <strong>Pushbullet Mode (Free App Notification):</strong> Delivers instant emergency alert popups directly to your Pushbullet app & connected devices.
+                        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 p-2.5 rounded text-[10px] leading-relaxed">
+                          🔔 <strong>Pushbullet Push Mode:</strong> Sends an instant Push Notification note to your Pushbullet app & connected browser devices (account: <em>linnyleander@gmail.com</em>). To send direct cellular SMS text to a mobile number, select <strong>Direct Cellular SMS</strong> mode.
                         </div>
                         
                         <div className="flex flex-col space-y-1">
