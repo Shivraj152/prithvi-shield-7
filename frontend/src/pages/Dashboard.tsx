@@ -130,7 +130,7 @@ export const Dashboard: React.FC = () => {
   const [testMobileNumber, setTestMobileNumber] = useState<string>('');
   const [smsAlertMessage, setSmsAlertMessage] = useState<string>('CRITICAL EVACUATION WARNING: Mass movements and saturated slope soils detected in East Khasi Hills. Seek high ground immediately.');
   const [smsSending, setSmsSending] = useState<boolean>(false);
-  const [smsGateway, setSmsGateway] = useState<string>('pushbullet');
+  const [smsGateway, setSmsGateway] = useState<string>('cellular_sms');
   const [twilioSid, setTwilioSid] = useState<string>(() => localStorage.getItem('prithvi_twilio_sid') || import.meta.env.VITE_TWILIO_SID || '');
   const [twilioToken, setTwilioToken] = useState<string>(() => localStorage.getItem('prithvi_twilio_token') || import.meta.env.VITE_TWILIO_TOKEN || '');
   const [twilioPhone, setTwilioPhone] = useState<string>(() => localStorage.getItem('prithvi_twilio_phone') || import.meta.env.VITE_TWILIO_PHONE || '');
