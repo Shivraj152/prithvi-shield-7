@@ -131,9 +131,9 @@ export const Dashboard: React.FC = () => {
   const [smsAlertMessage, setSmsAlertMessage] = useState<string>('CRITICAL EVACUATION WARNING: Mass movements and saturated slope soils detected in East Khasi Hills. Seek high ground immediately.');
   const [smsSending, setSmsSending] = useState<boolean>(false);
   const [smsGateway, setSmsGateway] = useState<string>('pushbullet');
-  const [twilioSid, setTwilioSid] = useState<string>(() => localStorage.getItem('prithvi_twilio_sid') || '');
-  const [twilioToken, setTwilioToken] = useState<string>(() => localStorage.getItem('prithvi_twilio_token') || '');
-  const [twilioPhone, setTwilioPhone] = useState<string>(() => localStorage.getItem('prithvi_twilio_phone') || '');
+  const [twilioSid, setTwilioSid] = useState<string>(() => localStorage.getItem('prithvi_twilio_sid') || import.meta.env.VITE_TWILIO_SID || '');
+  const [twilioToken, setTwilioToken] = useState<string>(() => localStorage.getItem('prithvi_twilio_token') || import.meta.env.VITE_TWILIO_TOKEN || '');
+  const [twilioPhone, setTwilioPhone] = useState<string>(() => localStorage.getItem('prithvi_twilio_phone') || import.meta.env.VITE_TWILIO_PHONE || '');
 
   const handleTwilioSidChange = (val: string) => { setTwilioSid(val); localStorage.setItem('prithvi_twilio_sid', val); };
   const handleTwilioTokenChange = (val: string) => { setTwilioToken(val); localStorage.setItem('prithvi_twilio_token', val); };
