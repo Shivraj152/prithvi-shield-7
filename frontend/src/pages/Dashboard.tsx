@@ -130,16 +130,8 @@ export const Dashboard: React.FC = () => {
   const [testMobileNumber, setTestMobileNumber] = useState<string>('');
   const [smsAlertMessage, setSmsAlertMessage] = useState<string>('CRITICAL EVACUATION WARNING: Mass movements and saturated slope soils detected in East Khasi Hills. Seek high ground immediately.');
   const [smsSending, setSmsSending] = useState<boolean>(false);
-  const [smsGateway, setSmsGateway] = useState<string>('cellular_sms');
-  const [twilioSid, setTwilioSid] = useState<string>(() => localStorage.getItem('prithvi_twilio_sid') || import.meta.env.VITE_TWILIO_SID || '');
-  const [twilioToken, setTwilioToken] = useState<string>(() => localStorage.getItem('prithvi_twilio_token') || import.meta.env.VITE_TWILIO_TOKEN || '');
-  const [twilioPhone, setTwilioPhone] = useState<string>(() => localStorage.getItem('prithvi_twilio_phone') || import.meta.env.VITE_TWILIO_PHONE || '');
-
-  const handleTwilioSidChange = (val: string) => { setTwilioSid(val); localStorage.setItem('prithvi_twilio_sid', val); };
-  const handleTwilioTokenChange = (val: string) => { setTwilioToken(val); localStorage.setItem('prithvi_twilio_token', val); };
-  const handleTwilioPhoneChange = (val: string) => { setTwilioPhone(val); localStorage.setItem('prithvi_twilio_phone', val); };
   const [pushbulletToken, setPushbulletToken] = useState<string>(() => {
-    return localStorage.getItem('prithvi_pushbullet_token') || import.meta.env.VITE_PUSHBULLET_TOKEN || '';
+    return localStorage.getItem('prithvi_pushbullet_token') || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
   });
 
   const handlePushbulletTokenChange = (val: string) => {
@@ -416,163 +408,72 @@ export const Dashboard: React.FC = () => {
     let apiFeedback = '';
     let apiError = '';
 
-    if (smsGateway === 'cellular_sms') {
-      try {
-        const apiRes = await fetch('/api/send-sms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gateway: 'cellular_sms',
-            phone: targetPhone,
-            message: alertMessage
-          })
-        });
+    // Pushbullet API Push Note & Serverless SIM SMS Gateway
+    try {
+      // Try Vercel Serverless /api/send-sms endpoint first
+      const apiRes = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gateway: 'pushbullet',
+          pushbulletToken: activeToken,
+          phone: targetPhone,
+          message: alertMessage
+        })
+      }).catch(() => null);
 
-        const smsData = await apiRes.json();
-        if (apiRes.ok && smsData.success) {
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '✅ DIRECT CELLULAR SMS DISPATCHED',
-            message_en: `Emergency SMS text message dispatched directly to ${targetPhone}!`,
-            severity: 'Critical'
-          });
-        } else {
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '⚠️ Cellular SMS Gateway Notice',
-            message_en: `${smsData.error || 'Cellular SMS gateway daily free limit reached'}. Use Twilio or Pushbullet gateway.`,
-            severity: 'High'
-          });
-        }
-      } catch (err: any) {
-        triggerToastAlert({
-          id: Date.now(),
-          title_en: '❌ Cellular SMS Dispatch Error',
-          message_en: err.message || 'Failed to dispatch cellular SMS.',
-          severity: 'High'
-        });
-      }
-    } else if (smsGateway === 'twilio') {
-      if (!twilioSid.trim() || !twilioToken.trim() || !twilioPhone.trim()) {
-        triggerToastAlert({
-          id: Date.now(),
-          title_en: '⚠️ Twilio Setup Required',
-          message_en: 'Please fill in your Twilio Account SID, Auth Token, and Sender Phone Number below.',
-          severity: 'Moderate'
-        });
-        setSmsSending(false);
-        return;
-      }
-      try {
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid.trim()}/Messages.json`;
-        const authHeader = 'Basic ' + btoa(`${twilioSid.trim()}:${twilioToken.trim()}`);
-        const params = new URLSearchParams();
-        params.append('To', targetPhone);
-        params.append('From', twilioPhone.trim());
-        params.append('Body', `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMessage}`);
+      let pushData: any = null;
+      let isOk = false;
 
-        const twRes = await fetch(twilioUrl, {
+      if (apiRes && apiRes.ok) {
+        pushData = await apiRes.json();
+        isOk = pushData.success !== false;
+      } else {
+        // Direct Pushbullet API Fallback
+        const pushRes = await fetch('https://api.pushbullet.com/v2/pushes', {
           method: 'POST',
           headers: {
-            'Authorization': authHeader,
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Access-Token': activeToken,
+            'Content-Type': 'application/json'
           },
-          body: params.toString()
-        });
-
-        const twData = await twRes.json();
-        if (twRes.ok) {
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '✅ TWILIO CELLULAR SMS DISPATCHED',
-            message_en: `Direct Cellular SMS text message delivered to ${targetPhone} (Twilio SID: ${twData.sid})`,
-            severity: 'Critical'
-          });
-        } else {
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '❌ Twilio SMS Dispatch Failed',
-            message_en: twData.message || 'Twilio cellular SMS dispatch failed. Check Account SID & Auth Token.',
-            severity: 'High'
-          });
-        }
-      } catch (twErr: any) {
-        console.warn('[Twilio Error]', twErr);
-        triggerToastAlert({
-          id: Date.now(),
-          title_en: '❌ Twilio Dispatch Error',
-          message_en: twErr.message || 'Twilio network request failed.',
-          severity: 'High'
-        });
-      }
-    } else {
-      // 2. Direct Pushbullet API Push Note / Vercel Serverless Gateway
-      try {
-        // Try Vercel Serverless /api/send-sms endpoint first to use serverless environment variables
-        const apiRes = await fetch('/api/send-sms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            gateway: 'pushbullet',
-            pushbulletToken: activeToken,
-            phone: targetPhone,
-            message: alertMessage
+            type: 'note',
+            title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
+            body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
           })
-        }).catch(() => null);
+        });
+        pushData = await pushRes.json();
+        isOk = pushRes.ok;
+      }
 
-        let pushData: any = null;
-        let isOk = false;
-
-        if (apiRes && apiRes.ok) {
-          pushData = await apiRes.json();
-          isOk = pushData.success !== false;
-        } else {
-          // Direct Pushbullet API Fallback
-          const pushRes = await fetch('https://api.pushbullet.com/v2/pushes', {
-            method: 'POST',
-            headers: {
-              'Access-Token': activeToken,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              type: 'note',
-              title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
-              body: `[SMS Warning to ${targetPhone}]: ${alertMessage}`
-            })
-          });
-          pushData = await pushRes.json();
-          isOk = pushRes.ok;
-        }
-
-        if (isOk) {
-          delivered = true;
-          apiFeedback = 'Pushbullet Emergency Push Note Delivered Successfully!';
-          const receiverAccount = pushData?.data?.receiver_email || pushData?.receiver_email || 'Connected Device';
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '✅ ALERT SENT TO RESPECTIVE NUMBER',
-            message_en: `Emergency Notification sent to respective mobile number ${targetPhone} (Pushbullet account: ${receiverAccount})`,
-            severity: 'Critical'
-          });
-        } else {
-          apiError = pushData?.error?.message || pushData?.error || 'Pushbullet API Error';
-          triggerToastAlert({
-            id: Date.now(),
-            title_en: '❌ PUSHBULLET DISPATCH FAILED',
-            message_en: `${apiError}. Siren audio & warning banner active on system dashboard.`,
-            severity: 'High'
-          });
-        }
-      } catch (err: any) {
-        apiError = err.message;
+      if (isOk) {
+        delivered = true;
+        apiFeedback = 'Pushbullet Emergency Push Note Delivered Successfully!';
+        const receiverAccount = pushData?.data?.receiver_email || pushData?.receiver_email || 'Connected Device';
         triggerToastAlert({
           id: Date.now(),
-          title_en: '❌ DISPATCH NETWORK ERROR',
-          message_en: `${err.message}. Siren audio & warning banner active on system dashboard.`,
+          title_en: '✅ ALERT SENT TO RESPECTIVE NUMBER',
+          message_en: `Emergency Notification sent to respective mobile number ${targetPhone} (Pushbullet account: ${receiverAccount})`,
+          severity: 'Critical'
+        });
+      } else {
+        apiError = pushData?.error?.message || pushData?.error || 'Pushbullet API Error';
+        triggerToastAlert({
+          id: Date.now(),
+          title_en: '❌ PUSHBULLET DISPATCH FAILED',
+          message_en: `${apiError}. Siren audio & warning banner active on system dashboard.`,
           severity: 'High'
         });
-        console.warn('[Direct Pushbullet Notice]', err);
       }
+    } catch (err: any) {
+      apiError = err.message;
+      triggerToastAlert({
+        id: Date.now(),
+        title_en: '❌ DISPATCH NETWORK ERROR',
+        message_en: `${err.message}. Siren audio & warning banner active on system dashboard.`,
+        severity: 'High'
+      });
+      console.warn('[Direct Pushbullet Notice]', err);
     }
 
     // Sound Emergency Audio Siren
@@ -1812,81 +1713,31 @@ export const Dashboard: React.FC = () => {
                   
                   {/* Pushbullet credentials inputs */}
                   <div className="md:col-span-2 flex flex-col space-y-2.5 bg-navy-950/50 p-4 border border-navy-800 rounded-lg text-xs">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <label className="text-slate-300 font-bold">Select SMS & Notification Gateway Mode:</label>
-                      <select
-                        value={smsGateway}
-                        onChange={e => setSmsGateway(e.target.value)}
-                        className="bg-navy-900 border border-navy-700 text-accent-green font-bold px-3 py-1.5 rounded-lg outline-none cursor-pointer"
-                      >
-                        <option value="cellular_sms">📱 Direct Cellular SMS (Sends SMS text to mobile number)</option>
-                        <option value="pushbullet">🔔 Pushbullet App & Account Push (Push Notification)</option>
-                        <option value="twilio">⚡ Twilio Direct Cellular SMS Gateway</option>
-                      </select>
+                    <div className="space-y-2.5">
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 p-2.5 rounded text-[10px] leading-relaxed">
+                        🔔 <strong>Pushbullet API Gateway Active:</strong> Sends instant emergency alerts and SIM SMS dispatches directly to your Pushbullet connected mobile phone and account.
+                      </div>
+                      
+                      <div className="flex flex-col space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-slate-400 font-semibold">Pushbullet Access Token</label>
+                          <button
+                            type="button"
+                            onClick={handleTestPushbulletConnection}
+                            className="text-[10px] text-accent-green hover:underline font-bold flex items-center gap-1"
+                          >
+                            🔍 Test Token & Device Connection
+                          </button>
+                        </div>
+                        <input 
+                          type="password" 
+                          placeholder="Paste your Pushbullet Access Token here..."
+                          value={pushbulletToken}
+                          onChange={e => handlePushbulletTokenChange(e.target.value)}
+                          className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green font-mono"
+                        />
+                      </div>
                     </div>
-
-                    {smsGateway === 'cellular_sms' ? (
-                      <div className="space-y-2.5 pt-2 border-t border-navy-800">
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 p-2.5 rounded text-[10px] leading-relaxed">
-                          🟢 <strong>Direct Cellular SMS Mode:</strong> Dispatches real cellular SMS text messages directly to any recipient mobile number over telecom networks.
-                        </div>
-                      </div>
-                    ) : smsGateway === 'twilio' ? (
-                      <div className="space-y-2.5 pt-2 border-t border-navy-800">
-                        <p className="text-[11px] text-amber-400 font-semibold leading-relaxed">
-                          ⚡ <strong>Twilio Cellular SMS Mode:</strong> Delivers direct cellular SMS text messages directly to any mobile phone globally. (Enter your Twilio credentials below).
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          <input
-                            type="text"
-                            placeholder="Twilio Account SID (AC...)"
-                            value={twilioSid}
-                            onChange={e => handleTwilioSidChange(e.target.value)}
-                            className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green"
-                          />
-                          <input
-                            type="password"
-                            placeholder="Twilio Auth Token"
-                            value={twilioToken}
-                            onChange={e => handleTwilioTokenChange(e.target.value)}
-                            className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Sender Number (e.g. +1855...)"
-                            value={twilioPhone}
-                            onChange={e => handleTwilioPhoneChange(e.target.value)}
-                            className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 p-2.5 rounded text-[10px] leading-relaxed">
-                          🔔 <strong>Pushbullet Push Mode:</strong> Sends an instant Push Notification note to your Pushbullet app & connected browser devices (account: <em>linnyleander@gmail.com</em>). To send direct cellular SMS text to a mobile number, select <strong>Direct Cellular SMS</strong> mode.
-                        </div>
-                        
-                        <div className="flex flex-col space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className="text-slate-400 font-semibold">Pushbullet Access Token</label>
-                            <button
-                              type="button"
-                              onClick={handleTestPushbulletConnection}
-                              className="text-[10px] text-accent-green hover:underline font-bold flex items-center gap-1"
-                            >
-                              🔍 Test Token & Device Connection
-                            </button>
-                          </div>
-                          <input 
-                            type="password" 
-                            placeholder="Paste your Pushbullet Access Token here..."
-                            value={pushbulletToken}
-                            onChange={e => handlePushbulletTokenChange(e.target.value)}
-                            className="bg-navy-950 border border-navy-800 rounded p-2 text-slate-200 outline-none focus:border-accent-green"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex flex-col space-y-1">
