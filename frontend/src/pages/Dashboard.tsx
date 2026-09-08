@@ -361,7 +361,7 @@ export const Dashboard: React.FC = () => {
 
   // Diagnostic tester for Pushbullet Access Token & Device Sync
   const handleTestPushbulletConnection = async () => {
-    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
+    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
     try {
       const res = await fetch('https://api.pushbullet.com/v2/users/me', {
         headers: { 'Access-Token': activeToken }
@@ -390,7 +390,7 @@ export const Dashboard: React.FC = () => {
   // Sends a real SMS/Push notification warning alert via Backend & CORS Gateway Proxy
   const handleSendTestSMS = async (alertMessage: string) => {
     const targetPhone = testMobileNumber || import.meta.env.VITE_TEST_PHONE || '+919876543210';
-    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.4HaZWYIpJ4OLNF6FDP6YmhICrXtHGdRV';
+    const activeToken = pushbulletToken.trim() || import.meta.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
 
     if (!alertMessage.trim()) {
       setAlertProgress("Please enter warning notification body first.");
