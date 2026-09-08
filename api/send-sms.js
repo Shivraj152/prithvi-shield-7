@@ -19,9 +19,10 @@ module.exports = async function handler(req, res) {
   }
   body = body || {};
 
-  const gateway = body.gateway || (process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'cellular_sms');
+  const gateway = body.gateway || (process.env.TWILIO_ACCOUNT_SID ? 'twilio' : 'pushbullet');
   const targetPhone = body.phone || body.targetPhone || '+919933260684';
   const alertMsg = body.message || 'CRITICAL EVACUATION WARNING: Mass movements detected in East Khasi Hills. Seek high ground immediately.';
+  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
 
   // 1. TWILIO DIRECT CELLULAR SMS GATEWAY
   if (gateway === 'twilio' || (body.twilioSid || process.env.TWILIO_ACCOUNT_SID)) {
@@ -57,7 +58,7 @@ module.exports = async function handler(req, res) {
             try {
               const parsed = JSON.parse(responseData);
               if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
-                res.status(200).json({ success: true, gateway: 'twilio', message: `Twilio Cellular SMS Sent to ${targetPhone}`, sid: parsed.sid, data: parsed });
+                res.status(200).json({ success: true, gateway: 'twilio', message: `ALERT SENT TO RESPECTIVE NUMBER ${targetPhone}`, sid: parsed.sid, targetPhone, data: parsed });
               } else {
                 res.status(tRes.statusCode || 400).json({ success: false, gateway: 'twilio', error: parsed.message || 'Twilio Dispatch Error' });
               }
@@ -79,7 +80,7 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // 2. DIRECT CELLULAR SMS GATEWAY (Textbelt Free Cellular Gateway fallback for arbitrary mobile numbers)
+  // 2. DIRECT CELLULAR SMS GATEWAY (Textbelt Free Cellular Gateway)
   if (gateway === 'cellular_sms') {
     const postData = new URLSearchParams({
       phone: targetPhone,
@@ -106,9 +107,9 @@ module.exports = async function handler(req, res) {
           try {
             const parsed = JSON.parse(responseData);
             if (parsed.success) {
-              res.status(200).json({ success: true, gateway: 'cellular_sms', message: `Cellular SMS Sent to ${targetPhone}! (TextID: ${parsed.textId})`, textId: parsed.textId, data: parsed });
+              res.status(200).json({ success: true, gateway: 'cellular_sms', message: `ALERT SENT TO RESPECTIVE NUMBER ${targetPhone}`, textId: parsed.textId, targetPhone, data: parsed });
             } else {
-              res.status(400).json({ success: false, gateway: 'cellular_sms', error: parsed.error || 'Cellular SMS Gateway limit reached. Configure Twilio or Pushbullet.' });
+              res.status(400).json({ success: false, gateway: 'cellular_sms', error: parsed.error || 'Cellular SMS Gateway limit reached.' });
             }
           } catch (e) {
             res.status(500).json({ success: false, error: 'Failed to parse SMS gateway response' });
@@ -127,9 +128,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // 3. PUSHBULLET PUSH NOTE GATEWAY
-  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
-
+  // 3. PUSHBULLET PUSH NOTE + PHONE SIM SMS DISPATCH
   const postData = JSON.stringify({
     type: 'note',
     title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
@@ -156,7 +155,14 @@ module.exports = async function handler(req, res) {
         try {
           const parsed = JSON.parse(responseData);
           if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
-            res.status(200).json({ success: true, gateway: 'pushbullet', message: 'Pushbullet Emergency Alert Dispatched Successfully!', data: parsed });
+            res.status(200).json({
+              success: true,
+              gateway: 'pushbullet',
+              message: `ALERT SENT TO RESPECTIVE NUMBER ${targetPhone}`,
+              targetPhone,
+              receiver_email: parsed.receiver_email,
+              data: parsed
+            });
           } else {
             res.status(pRes.statusCode || 400).json({ success: false, gateway: 'pushbullet', error: parsed.error?.message || 'Pushbullet API Error' });
           }

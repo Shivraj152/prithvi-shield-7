@@ -550,8 +550,8 @@ export const Dashboard: React.FC = () => {
           const receiverAccount = pushData?.data?.receiver_email || pushData?.receiver_email || 'Connected Device';
           triggerToastAlert({
             id: Date.now(),
-            title_en: '✅ PUSHBULLET ALERT DELIVERED LIVE',
-            message_en: `Emergency Notification pushed to Pushbullet account (${receiverAccount})`,
+            title_en: '✅ ALERT SENT TO RESPECTIVE NUMBER',
+            message_en: `Emergency Notification sent to respective mobile number ${targetPhone} (Pushbullet account: ${receiverAccount})`,
             severity: 'Critical'
           });
         } else {
