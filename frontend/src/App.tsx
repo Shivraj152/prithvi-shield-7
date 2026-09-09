@@ -45,22 +45,22 @@ export const App: React.FC = () => {
       const headers = user ? { Authorization: `Bearer token_mock_admin` } : undefined; // Simulated headers
 
       const [sensorsRes, roadsRes, incidentsRes, alertsRes] = await Promise.all([
-        axios.get('/sensors'),
-        axios.get('/roads'),
-        axios.get('/incidents'),
-        axios.get('/alerts')
+        axios.get('/sensors').catch(() => null),
+        axios.get('/roads').catch(() => null),
+        axios.get('/incidents').catch(() => null),
+        axios.get('/alerts').catch(() => null)
       ]);
 
-      setSensors(sensorsRes.data);
-      setRoads(roadsRes.data);
-      setIncidents(incidentsRes.data);
-      setAlerts(alertsRes.data);
+      if (sensorsRes?.data) setSensors(sensorsRes.data);
+      if (roadsRes?.data) setRoads(roadsRes.data);
+      if (incidentsRes?.data) setIncidents(incidentsRes.data);
+      if (alertsRes?.data) setAlerts(alertsRes.data);
 
       if (user && (user.role === 'Field Officer' || user.role === 'District Admin' || user.role === 'SDMA Super Admin')) {
         const citizenReportsRes = await axios.get('/citizen-reports', {
-          headers: { Authorization: `Bearer mock_admin_token` } // JWT header mockup
-        });
-        setCitizenReports(citizenReportsRes.data);
+          headers: { Authorization: `Bearer mock_admin_token` }
+        }).catch(() => null);
+        if (citizenReportsRes?.data) setCitizenReports(citizenReportsRes.data);
       }
     } catch (err) {
       console.error('[Initial Loading Error]', err);
