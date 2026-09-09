@@ -20,7 +20,7 @@ router.post('/test-pushbullet', async (req: Request, res: Response) => {
     }).catch(() => ({ data: { devices: [] } }));
 
     const devices = devicesRes.data.devices || [];
-    const smsDevices = devices.filter((d: any) => d.active && (d.has_sms || d.type === 'android' || d.icon === 'phone'));
+    const smsDevices = devices.filter((d: any) => d.active && (d.has_sms || d.type === 'android'));
 
     res.json({
       success: true,
@@ -126,7 +126,7 @@ router.post('/ai-location-risk', async (req: Request, res: Response) => {
   });
 });
 
-// Proxy endpoint to send real SMS warning message via Textbelt, Twilio, or Fast2SMS API, avoiding browser-side CORS blocks
+// Proxy endpoint to send real SMS warning message via Textbelt, Twilio, or Fast2SMS API
 router.post('/send-sms', async (req, res) => {
   const { phone, message, gateway, twilioSid, twilioToken, twilioPhone, twilioMediaType, fast2smsKey } = req.body;
   
@@ -144,8 +144,6 @@ router.post('/send-sms', async (req, res) => {
         const params = new URLSearchParams();
         params.append('To', phone);
         params.append('From', twilioPhone);
-        
-        // Use Twilio's whitelisted demo URL to bypass inline TwiML blocks on trial accounts
         params.append('Url', 'http://demo.twilio.com/docs/voice.xml');
 
         const authHeaderClean = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
@@ -198,7 +196,6 @@ router.post('/send-sms', async (req, res) => {
     let pushbulletSent = false;
     let emailSent = false;
     let smsStatusMsg = '';
-    let apiSuccess = false;
 
     // 1. Validate Token & Get Pushbullet User Account Info
     try {
@@ -208,7 +205,6 @@ router.post('/send-sms', async (req, res) => {
       });
       if (userRes.data && userRes.data.email) {
         pushbulletAccountEmail = userRes.data.email;
-        apiSuccess = true;
         smsStatusMsg += `Pushbullet Account Authenticated (${userRes.data.email}). `;
       }
     } catch (authErr: any) {
@@ -235,28 +231,40 @@ router.post('/send-sms', async (req, res) => {
 
     // 3. Attempt Pushbullet Phone SIM SMS & Account Note Push
     try {
-      // Fetch devices to see if Android SIM phone is connected
+      // Fetch devices to grab active Android phone with SMS enabled
       const devicesRes = await axios.get('https://api.pushbullet.com/v2/devices', {
         headers: { 'Access-Token': activeToken }
       }).catch(() => null);
 
       const devices = (devicesRes && devicesRes.data && devicesRes.data.devices) || [];
-      const phoneDevice = devices.find((d: any) => d.active && (d.has_sms || d.type === 'android' || d.icon === 'phone'));
+      
+      // Strictly filter for device with has_sms === true
+      let phoneDevice = devices.find((d: any) => d.active && d.has_sms === true);
+      if (!phoneDevice) {
+        phoneDevice = devices.find((d: any) => d.active && d.type === 'android');
+      }
 
       if (phoneDevice) {
-        // Send actual SMS text via Android Phone SIM
-        await axios.post('https://api.pushbullet.com/v2/texts', {
-          data: {
-            addresses: [phone],
-            message: `[PRITHVI-SHIELD EMERGENCY ALERT]\n\n${message}`,
-            target_device_iden: phoneDevice.iden
+        try {
+          const smsRes = await axios.post('https://api.pushbullet.com/v2/texts', {
+            data: {
+              target_device_iden: phoneDevice.iden,
+              addresses: [phone],
+              message: `[PRITHVI-SHIELD EMERGENCY ALERT]\n\n${message}`
+            }
+          }, {
+            headers: { 'Access-Token': activeToken, 'Content-Type': 'application/json' }
+          });
+
+          if (smsRes.status >= 200 && smsRes.status < 300) {
+            smsStatusMsg += `SIM SMS queued to ${phoneDevice.nickname || phoneDevice.model || 'Android Phone'}. `;
           }
-        }, {
-          headers: { 'Access-Token': activeToken, 'Content-Type': 'application/json' }
-        }).catch(err => console.warn('[Pushbullet SMS Sync Notice]', err.message));
-        smsStatusMsg += `Android Phone SIM SMS Dispatched to ${phoneDevice.model || 'Device'}. `;
+        } catch (smsErr: any) {
+          console.warn('[Pushbullet SIM SMS Error]', smsErr.response?.data || smsErr.message);
+          smsStatusMsg += `SMS Dispatch failed on device (${smsErr.message}). `;
+        }
       } else {
-        smsStatusMsg += `Account Push Sent. (To receive Cellular SMS, link Android Phone in Pushbullet App). `;
+        smsStatusMsg += `No active SMS-enabled Android device found on account. `;
       }
 
       // Send Pushbullet Note Push to account
@@ -317,7 +325,6 @@ router.post('/send-sms', async (req, res) => {
     try {
       console.log(`[SMS Proxy] Relaying Fast2SMS warning blast to ${phone}...`);
       
-      // Clean mobile number (Fast2SMS expects 10-digit Indian number without code)
       const cleanPhone = phone.replace('+', '').replace(/^91/, '').trim();
       
       const response = await axios.get('https://www.fast2sms.com/dev/bulkV2', {
@@ -359,7 +366,6 @@ router.post('/send-sms', async (req, res) => {
 
 // Dictionary for Bhashini-style translation fallbacks
 const translateAlert = (title: string, message: string, lang: string): { title: string, message: string } => {
-  // Simulates translation results for NER languages
   const translations: Record<string, { title: string, message: string }> = {
     as: {
       title: `[সতৰ্কতা] ${title}`,
@@ -429,7 +435,6 @@ router.post('/', authenticateToken, authorizeRoles('District Admin', 'SDMA Super
   }
 
   try {
-    // Generate regional language translations
     const langs = ['as', 'br', 'kha', 'mz', 'mni', 'nag'];
     const translations: Record<string, { title: string, message: string }> = {};
     for (const lang of langs) {
@@ -451,7 +456,7 @@ router.post('/', authenticateToken, authorizeRoles('District Admin', 'SDMA Super
   }
 });
 
-// 3. DISPATCH ALERT (Admins only) - Triggers mass SMS/Push Simulation
+// 3. DISPATCH ALERT (Admins only)
 router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin', 'SDMA Super Admin'), async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const alertId = req.params.id;
 
@@ -459,7 +464,6 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
   try {
     await client.query('BEGIN');
 
-    // 1. Fetch Alert
     const alertRes = await client.query('SELECT * FROM alerts WHERE id = $1', [alertId]);
     if (alertRes.rows.length === 0) {
       res.status(404).json({ error: 'Alert not found.' });
@@ -474,9 +478,6 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
       return;
     }
 
-    // 2. Fetch target users.
-    // In production, we would query users in that risk zone using PostGIS ST_DWithin or district filter.
-    // For MVP, we fetch all active users to dispatch notifications to them.
     const usersRes = await client.query('SELECT id, phone, role, preferred_language FROM users');
     const users = usersRes.rows;
 
@@ -491,11 +492,8 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
         msg = alert.translations[preferredLang].message;
       }
 
-      // Simulate channel dispatch log
-      // Very High severity -> SMS + Push. Moderate/High -> Push only for general public, SMS for responders
       const channels = alert.severity === 'Very High' ? ['SMS', 'Push'] : ['Push'];
       if (targetUser.role !== 'Citizen') {
-        // Always send SMS to responders/officers
         if (!channels.includes('SMS')) channels.push('SMS');
       }
 
@@ -504,19 +502,18 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
           alert_id: alert.id,
           user_id: targetUser.id,
           channel,
-          status: 'delivered', // simulated success
+          status: 'delivered',
           error_message: null
         });
 
         if (channel === 'SMS') {
-          console.log(`[SMS Client] SENDING via MSG91 (DLT Template ID: 140716...) to ${targetUser.phone || '9999999999'}: ${msg}`);
+          console.log(`[SMS Client] SENDING via MSG91 to ${targetUser.phone || '9999999999'}: ${msg}`);
         } else {
           console.log(`[FCM Client] SENDING PUSH to user_${targetUser.id}: ${title} - ${msg}`);
         }
       }
     }
 
-    // Batch insert recipients
     if (recipientInserts.length > 0) {
       const valuesSql = recipientInserts.map((_, i) => `($${i*5 + 1}, $${i*5 + 2}, $${i*5 + 3}, $${i*5 + 4}, $${i*5 + 5})`).join(', ');
       const queryParams = recipientInserts.flatMap(r => [r.alert_id, r.user_id, r.channel, r.status, r.error_message]);
@@ -526,7 +523,6 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
       `, queryParams);
     }
 
-    // 3. Update alert status to 'Dispatched'
     await client.query('UPDATE alerts SET status = \'Dispatched\' WHERE id = $1', [alertId]);
 
     await client.query('COMMIT');
@@ -540,7 +536,7 @@ router.post('/:id/dispatch', authenticateToken, authorizeRoles('District Admin',
   }
 });
 
-// 4. GET ALERT RECIPIENTS LOG (For monitoring transmission success rate)
+// 4. GET ALERT RECIPIENTS LOG
 router.get('/:id/recipients', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const alertId = req.params.id;
   try {

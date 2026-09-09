@@ -40,11 +40,14 @@ module.exports = async function handler(req, res) {
 
   const targetPhone = body.phone || body.targetPhone || '+919933260684';
   const alertMsg = body.message || 'CRITICAL EVACUATION WARNING: Mass movements detected in East Khasi Hills. Seek high ground immediately.';
-  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN || 'o.C8YcFNBB0RbvsHZqgpb2MomTJLjfI574';
+  const activeToken = (body.pushbulletToken && body.pushbulletToken.trim()) || process.env.PUSHBULLET_TOKEN || process.env.VITE_PUSHBULLET_TOKEN;
 
-  // PUSHBULLET GATEWAY ONLY
+  if (!activeToken) {
+    return res.status(400).json({ success: false, error: 'Pushbullet Access Token is required.' });
+  }
+
   try {
-    // 1. Query connected Pushbullet devices to detect Android SIM phone
+    // 1. Fetch devices and explicitly filter for active Android devices with SMS enabled
     let smsDevice = null;
     try {
       const devRes = await makeRequest({
@@ -54,43 +57,62 @@ module.exports = async function handler(req, res) {
         method: 'GET',
         headers: { 'Access-Token': activeToken }
       });
+
       const devices = devRes.body?.devices || [];
-      smsDevice = devices.find(d => d.active && (d.has_sms || d.type === 'android' || d.icon === 'phone'));
+      // STRICT FILTER: Must have has_sms: true
+      smsDevice = devices.find(d => d.active && d.has_sms === true);
+      
+      // Fallback to active android if has_sms flag isn't explicitly set
+      if (!smsDevice) {
+        smsDevice = devices.find(d => d.active && d.type === 'android');
+      }
     } catch (e) {
       console.warn('[Pushbullet Device Query Warning]', e.message);
     }
 
-    // 2. Attempt SIM SMS dispatch if Android Phone device with SMS capability is connected
-    let simSmsDispatched = false;
-    if (smsDevice) {
-      try {
-        const textPayload = JSON.stringify({
-          data: {
-            addresses: [targetPhone],
-            message: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`,
-            target_device_iden: smsDevice.iden
-          }
-        });
-        const textRes = await makeRequest({
-          hostname: 'api.pushbullet.com',
-          port: 443,
-          path: '/v2/texts',
-          method: 'POST',
-          headers: {
-            'Access-Token': activeToken,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(textPayload)
-          }
-        }, textPayload);
-        if (textRes.statusCode >= 200 && textRes.statusCode < 300) {
-          simSmsDispatched = true;
-        }
-      } catch (e) {
-        console.warn('[Pushbullet SIM SMS Warning]', e.message);
-      }
+    if (!smsDevice) {
+      return res.status(400).json({
+        success: false,
+        error: 'No active Android phone with SMS Sync enabled was found on this Pushbullet account. Open Pushbullet on your phone -> Settings -> enable SMS Syncing.'
+      });
     }
 
-    // 3. Dispatch Pushbullet Note Push to account
+    // 2. Dispatch real SMS via Pushbullet /v2/texts
+    let simSmsDispatched = false;
+    let smsError = null;
+
+    try {
+      const textPayload = JSON.stringify({
+        data: {
+          target_device_iden: smsDevice.iden,
+          addresses: [targetPhone],
+          message: `[PRITHVI-SHIELD EMERGENCY ALERT]: ${alertMsg}`
+        }
+      });
+
+      const textRes = await makeRequest({
+        hostname: 'api.pushbullet.com',
+        port: 443,
+        path: '/v2/texts',
+        method: 'POST',
+        headers: {
+          'Access-Token': activeToken,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(textPayload)
+        }
+      }, textPayload);
+
+      if (textRes.statusCode >= 200 && textRes.statusCode < 300) {
+        simSmsDispatched = true;
+      } else {
+        smsError = textRes.body;
+      }
+    } catch (e) {
+      console.warn('[Pushbullet SIM SMS Warning]', e.message);
+      smsError = e.message;
+    }
+
+    // 3. Optional: Send note push notification as fallback/mirror
     const postData = JSON.stringify({
       type: 'note',
       title: '🔴 PRITHVI-SHIELD EMERGENCY ALERT',
@@ -109,20 +131,18 @@ module.exports = async function handler(req, res) {
       }
     }, postData);
 
-    if (pRes.statusCode >= 200 && pRes.statusCode < 300) {
-      return res.status(200).json({
-        success: true,
-        gateway: 'pushbullet',
-        message: `ALERT SENT TO RESPECTIVE NUMBER ${targetPhone}`,
-        targetPhone,
-        receiver_email: pRes.body.receiver_email,
-        simSmsDispatched,
-        simDeviceName: smsDevice?.nickname || smsDevice?.model || null,
-        data: pRes.body
-      });
-    } else {
-      return res.status(pRes.statusCode || 400).json({ success: false, gateway: 'pushbullet', error: pRes.body?.error?.message || 'Pushbullet API Error' });
-    }
+    return res.status(200).json({
+      success: true,
+      gateway: 'pushbullet',
+      message: simSmsDispatched 
+        ? `SMS successfully queued to SIM card for ${targetPhone}` 
+        : `Push notification sent, but cellular SMS failed to trigger.`,
+      targetPhone,
+      simSmsDispatched,
+      simDeviceName: smsDevice?.nickname || smsDevice?.model || smsDevice?.iden,
+      smsError
+    });
+
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }
