@@ -126,7 +126,7 @@ router.post('/ai-location-risk', async (req: Request, res: Response) => {
   });
 });
 
-// Proxy endpoint to send real SMS warning message via Textbelt, Twilio, or Fast2SMS API
+// Proxy endpoint to send real SMS warning message via Textbelt, Twilio, Pushbullet, or Fast2SMS API
 router.post('/send-sms', async (req, res) => {
   const { phone, message, gateway, twilioSid, twilioToken, twilioPhone, twilioMediaType, fast2smsKey } = req.body;
   
@@ -162,7 +162,6 @@ router.post('/send-sms', async (req, res) => {
         res.status(500).json({ error: `Twilio Voice Call Error: ${errorDetail}` });
       }
     } else {
-      // Standard Twilio SMS warning blast
       try {
         console.log(`[SMS Proxy] Relaying Twilio SMS warning blast to ${phone} via Twilio Account ${twilioSid}...`);
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
@@ -231,14 +230,12 @@ router.post('/send-sms', async (req, res) => {
 
     // 3. Attempt Pushbullet Phone SIM SMS & Account Note Push
     try {
-      // Fetch devices to grab active Android phone with SMS enabled
       const devicesRes = await axios.get('https://api.pushbullet.com/v2/devices', {
         headers: { 'Access-Token': activeToken }
       }).catch(() => null);
 
       const devices = (devicesRes && devicesRes.data && devicesRes.data.devices) || [];
       
-      // Strictly filter for device with has_sms === true
       let phoneDevice = devices.find((d: any) => d.active && d.has_sms === true);
       if (!phoneDevice) {
         phoneDevice = devices.find((d: any) => d.active && d.type === 'android');
@@ -246,18 +243,22 @@ router.post('/send-sms', async (req, res) => {
 
       if (phoneDevice) {
         try {
+          // Strip leading + sign for Android daemon compatibility
+          const cleanPhone = phone.replace(/\+/g, '').trim();
+          
           const smsRes = await axios.post('https://api.pushbullet.com/v2/texts', {
             data: {
               target_device_iden: phoneDevice.iden,
-              addresses: [phone],
-              message: `[PRITHVI-SHIELD EMERGENCY ALERT]\n\n${message}`
+              addresses: [cleanPhone],
+              message: `[PRITHVI-SHIELD EMERGENCY ALERT]\n\n${message}`,
+              guid: `ps_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
             }
           }, {
             headers: { 'Access-Token': activeToken, 'Content-Type': 'application/json' }
           });
 
           if (smsRes.status >= 200 && smsRes.status < 300) {
-            smsStatusMsg += `SIM SMS queued to ${phoneDevice.nickname || phoneDevice.model || 'Android Phone'}. `;
+            smsStatusMsg += `SIM SMS queued to ${phoneDevice.nickname || phoneDevice.model || 'Android Phone'} (Target: ${cleanPhone}). `;
           }
         } catch (smsErr: any) {
           console.warn('[Pushbullet SIM SMS Error]', smsErr.response?.data || smsErr.message);
@@ -348,7 +349,6 @@ router.post('/send-sms', async (req, res) => {
       res.status(500).json({ error: `Fast2SMS Dispatch Error: ${errorDetail}` });
     }
   } else {
-    // Default to free Textbelt gateway
     try {
       console.log(`[SMS Proxy] Relaying free Textbelt warning blast to ${phone}...`);
       const response = await axios.post('https://textbelt.com/text', {
